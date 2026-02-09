@@ -11,6 +11,68 @@ A focused, terminal-based Slack client with VIP filtering and channel recap func
 - 💬 **Send & Receive** - Full message support
 - 🆔 **Message IDs** - Unique IDs for easy reference
 
+
+## Usage
+
+### Send Messages
+
+```bash
+# Send to channel
+python slack-tui.py --send "#general" "Hello team!"
+
+# Send to user
+python slack-tui.py --send "@alice" "Hi Alice!"
+```
+
+### View Messages
+
+```bash
+# Show recent messages
+python slack-tui.py --show "#general"
+
+# Show last 50 messages
+python slack-tui.py --show "#general" -l 50
+```
+
+### VIP Features
+
+```bash
+# Add VIP users
+python slack-tui.py --vip-add @boss
+python slack-tui.py --vip-add @client
+
+# View VIP messages
+python slack-tui.py --vip
+
+# List VIP users
+python slack-tui.py --vip-list
+
+# Remove VIP user
+python slack-tui.py --vip-remove @username
+```
+
+### Channel Recap
+
+```bash
+# Interactive recap (use Q/E to navigate, X to exit)
+python slack-tui.py --recap
+```
+
+### Search
+
+```bash
+# Search messages
+python slack-tui.py --search "project deadline"
+```
+
+### List Channels
+
+```bash
+# Show all channels you're in
+python slack-tui.py --channels
+```
+
+
 ## Requirements
 
 - Python 3.11+
@@ -109,66 +171,6 @@ python slack-tui.py \
   -t xoxe.xoxp-ACCESS \
   -r xoxe-REFRESH \
   --save-token
-```
-
-## Usage
-
-### Send Messages
-
-```bash
-# Send to channel
-python slack-tui.py --send "#general" "Hello team!"
-
-# Send to user
-python slack-tui.py --send "@alice" "Hi Alice!"
-```
-
-### View Messages
-
-```bash
-# Show recent messages
-python slack-tui.py --show "#general"
-
-# Show last 50 messages
-python slack-tui.py --show "#general" -l 50
-```
-
-### VIP Features
-
-```bash
-# Add VIP users
-python slack-tui.py --vip-add @boss
-python slack-tui.py --vip-add @client
-
-# View VIP messages
-python slack-tui.py --vip
-
-# List VIP users
-python slack-tui.py --vip-list
-
-# Remove VIP user
-python slack-tui.py --vip-remove @username
-```
-
-### Channel Recap
-
-```bash
-# Interactive recap (use Q/E to navigate, X to exit)
-python slack-tui.py --recap
-```
-
-### Search
-
-```bash
-# Search messages
-python slack-tui.py --search "project deadline"
-```
-
-### List Channels
-
-```bash
-# Show all channels you're in
-python slack-tui.py --channels
 ```
 
 ## Project Structure
