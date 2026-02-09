@@ -7,6 +7,25 @@ from slack_sdk import WebClient
 from slack_sdk.errors import SlackApiError
 
 
+class SlackPermissionError(Exception):
+    """Raised when the Slack API rejects a call due to token type or missing scopes."""
+
+    def __init__(self, *, method: str, error: str, needed: str | None = None, provided: str | None = None):
+        self.method = method
+        self.error = error
+        self.needed = needed
+        self.provided = provided
+        super().__init__(self._build_message())
+
+    def _build_message(self) -> str:
+        parts = [f"{self.method}: {self.error}"]
+        if self.needed:
+            parts.append(f"needed={self.needed}")
+        if self.provided:
+            parts.append(f"provided={self.provided}")
+        return " ".join(parts)
+
+
 class MessageHandler:
     """Handles Slack message operations."""
     
@@ -26,25 +45,35 @@ class MessageHandler:
     
     # ============= Channel Operations =============
     
-    def get_channels(self, types: str = "public_channel,private_channel") -> List[Dict]:
-        """Get all channels."""
+    def get_channels(self, types: str = "public_channel") -> List[Dict]:
+        """Get channels/conversations for the given types.
+
+        Default is public channels only, to minimize required scopes.
+        """
         try:
             result = self.client.conversations_list(
                 types=types,
                 exclude_archived=True,
-                limit=1000
+                limit=1000,
             )
             channels = result.get("channels", [])
-            
+
             # Cache channels
             for channel in channels:
                 self.channel_cache[channel["id"]] = channel
-                self.channel_cache[channel["name"]] = channel
-            
+                if "name" in channel:
+                    self.channel_cache[channel["name"]] = channel
+
             return channels
         except SlackApiError as e:
-            print(f"Error fetching channels: {e.response['error']}")
-            return []
+            data = getattr(e.response, "data", {}) or {}
+            error = data.get("error", "unknown_error")
+            raise SlackPermissionError(
+                method="conversations.list",
+                error=error,
+                needed=data.get("needed"),
+                provided=data.get("provided"),
+            ) from e
     
     def get_channel(self, channel_id: str) -> Optional[Dict]:
         """Get channel info."""
@@ -56,26 +85,28 @@ class MessageHandler:
             channel = result["channel"]
             self.channel_cache[channel_id] = channel
             return channel
-        except SlackApiError:
-            return None
+        except SlackApiError as e:
+            data = getattr(e.response, 'data', {}) or {}
+            error = data.get('error', 'unknown_error')
+            raise SlackPermissionError(method='conversations.info', error=error, needed=data.get('needed'), provided=data.get('provided')) from e
     
-    def resolve_channel(self, identifier: str) -> Optional[str]:
-        """Resolve channel name/ID to channel ID."""
+    def resolve_channel(self, identifier: str, types: str = "public_channel") -> Optional[str]:
+        """Resolve channel name/ID to channel ID using the allowed conversation types."""
         identifier = identifier.lstrip("#")
-        
+
         # Already an ID
         if identifier.startswith(("C", "D", "G")):
             return identifier
-        
+
         # Check cache
         if identifier in self.channel_cache:
             return self.channel_cache[identifier].get("id")
-        
-        # Search channels
-        self.get_channels()
+
+        # Refresh cache with allowed types
+        self.get_channels(types=types)
         if identifier in self.channel_cache:
             return self.channel_cache[identifier].get("id")
-        
+
         return None
     
     # ============= User Operations =============
@@ -93,8 +124,9 @@ class MessageHandler:
             
             return users
         except SlackApiError as e:
-            print(f"Error fetching users: {e.response['error']}")
-            return []
+            data = getattr(e.response, 'data', {}) or {}
+            error = data.get('error', 'unknown_error')
+            raise SlackPermissionError(method='users.list', error=error, needed=data.get('needed'), provided=data.get('provided')) from e
     
     def get_user(self, user_id: str) -> Optional[Dict]:
         """Get user info."""
@@ -106,8 +138,10 @@ class MessageHandler:
             user = result["user"]
             self.user_cache[user_id] = user
             return user
-        except SlackApiError:
-            return None
+        except SlackApiError as e:
+            data = getattr(e.response, 'data', {}) or {}
+            error = data.get('error', 'unknown_error')
+            raise SlackPermissionError(method='users.info', error=error, needed=data.get('needed'), provided=data.get('provided')) from e
     
     def resolve_user(self, identifier: str) -> Optional[str]:
         """Resolve username/ID to user ID."""
@@ -147,8 +181,9 @@ class MessageHandler:
             
             return messages
         except SlackApiError as e:
-            print(f"Error fetching messages: {e.response['error']}")
-            return []
+            data = getattr(e.response, 'data', {}) or {}
+            error = data.get('error', 'unknown_error')
+            raise SlackPermissionError(method='conversations.history', error=error, needed=data.get('needed'), provided=data.get('provided')) from e
     
     def send_message(self, channel_id: str, text: str, 
                     thread_ts: Optional[str] = None) -> Optional[Dict]:
@@ -161,8 +196,9 @@ class MessageHandler:
             result = self.client.chat_postMessage(**kwargs)
             return result
         except SlackApiError as e:
-            print(f"Error sending message: {e.response['error']}")
-            return None
+            data = getattr(e.response, 'data', {}) or {}
+            error = data.get('error', 'unknown_error')
+            raise SlackPermissionError(method='chat.postMessage', error=error, needed=data.get('needed'), provided=data.get('provided')) from e
     
     def get_thread_replies(self, channel_id: str, thread_ts: str) -> List[Dict]:
         """Get thread replies."""
@@ -179,8 +215,9 @@ class MessageHandler:
             
             return messages
         except SlackApiError as e:
-            print(f"Error fetching thread: {e.response['error']}")
-            return []
+            data = getattr(e.response, 'data', {}) or {}
+            error = data.get('error', 'unknown_error')
+            raise SlackPermissionError(method='conversations.replies', error=error, needed=data.get('needed'), provided=data.get('provided')) from e
     
     def search_messages(self, query: str, count: int = 20) -> List[Dict]:
         """Search messages."""

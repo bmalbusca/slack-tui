@@ -88,7 +88,7 @@ For Socket Mode and app-level features:
 
 ```bash
 # Option 1: Environment variable
-export SLACK_TUI_TOKEN=xoxp-your-token
+export SLACK_TOKEN=xoxp-your-token
 
 # Option 2: Pass on command line
 python slack-tui.py --token xoxp-your-token --channels
@@ -215,7 +215,7 @@ See `examples.sh` for more usage examples:
 **"No token found"**
 ```bash
 # Set environment variable
-export SLACK_TUI_TOKEN=xoxp-your-token  # or xoxb-, xoxe-, xapp-
+export SLACK_TOKEN=xoxp-your-token  # or xoxb-, xoxe-, xapp-
 
 # Or pass directly
 python slack-tui.py --token xoxp-your-token --channels
@@ -289,3 +289,18 @@ MIT License - See LICENSE file
 ---
 
 Made with ❤️ for focused work
+
+## Permissions & Scopes
+
+This tool uses Slack's **Web API**. Authentication (`auth.test`) can succeed even when a token cannot read channels/messages.
+
+- Default mode is **public channels only** (`--types public_channel`) to minimize required scopes.
+- See **PERMISSIONS.md** for a command → API method → scope matrix.
+- If you get `missing_scope` or `not_allowed_token_type`, your token/workspace policy does not allow the requested operation.
+
+### Common minimal scopes (public channels)
+
+- `channels:read` (list public channels)
+- `channels:history` (read messages)
+- `users:read` (optional; username resolution)
+

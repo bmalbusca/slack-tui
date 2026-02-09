@@ -12,9 +12,9 @@ class RecapManager:
         self.recaps = []
         self.current_index = 0
     
-    def generate_recaps(self, messages_per_channel: int = 10) -> List[Dict]:
+    def generate_recaps(self, types: str = "public_channel", messages_per_channel: int = 10) -> List[Dict]:
         """Generate recaps for all channels."""
-        channels = self.handler.get_channels()
+        channels = self.handler.get_channels(types=types)
         member_channels = [c for c in channels if c.get('is_member')]
         
         self.recaps = []

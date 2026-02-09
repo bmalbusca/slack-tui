@@ -13,10 +13,13 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from config.settings import Settings
 from connectors.slack_auth import SlackAuth, AuthError
-from messages.message_handler import MessageHandler
+from messages.message_handler import MessageHandler, SlackPermissionError
 from messages.vip_listener import VIPListener
 from processors.autocomplete import fuzzy_match_channels, fuzzy_match_users, display_matches
 from processors.recap import RecapManager
+from utils.key_reader import read_key
+from utils.types import normalize_types
+
 
 
 class SlackTUI:
@@ -28,16 +31,51 @@ class SlackTUI:
         self.handler = None
         self.vip_listener = None
         self.recap_manager = None
+        self.allowed_types = self.settings.get_default_types()
+        self.debug = False
+
+    def _print_permission_help(self, pe: SlackPermissionError) -> None:
+        """Print actionable guidance for missing scopes / disallowed token types."""
+        print("\n❌ Slack permission error", file=sys.stderr)
+        print(f"- API method: {pe.method}", file=sys.stderr)
+        print(f"- Error: {pe.error}", file=sys.stderr)
+
+        if pe.needed:
+            print(f"- Needed scopes: {pe.needed}", file=sys.stderr)
+        if pe.provided:
+            print(f"- Provided scopes: {pe.provided}", file=sys.stderr)
+
+        # Practical next steps
+        print("\nNext steps:", file=sys.stderr)
+        print(f"1) Try minimal mode: --types public_channel (current: {self.allowed_types})", file=sys.stderr)
+        print("2) Use a token that includes the required scopes (usually a bot token xoxb-… from a Slack app)", file=sys.stderr)
+        print("3) If your workspace is locked down, share ADMIN_REQUEST.md with your Slack admins", file=sys.stderr)
+
+        if pe.error == "not_allowed_token_type":
+            print("\nTip: This token type is not permitted for this API method in your workspace.", file=sys.stderr)
+            print("A bot token (xoxb-…) with explicit scopes is the most reliable option.", file=sys.stderr)
+
+        print("\nSee PERMISSIONS.md for a command→scope matrix.", file=sys.stderr)
     
-    async def authenticate(self, token=None):
+    async def authenticate(self, token=None, *, save_token: bool = False, types: str | None = None, debug: bool = False):
         """Authenticate with Slack."""
         try:
-            success, message = await self.auth.authenticate(token)
+            self.debug = debug
+            if types:
+                self.allowed_types = normalize_types(types)
+                self.settings.set_default_types(types)
+            success, message = await self.auth.authenticate(token, save_token=save_token)
             if success:
                 print(f"✓ {message}")
                 self.handler = MessageHandler(self.auth.get_client())
                 self.vip_listener = VIPListener(self.handler, self.settings)
                 self.recap_manager = RecapManager(self.handler)
+                # Capability probe: ensure we can list conversations for selected types
+                try:
+                    _ = self.handler.get_channels(types=self.allowed_types)
+                except SlackPermissionError as pe:
+                    self._print_permission_help(pe)
+                    return False
                 return True
             else:
                 print(f"✗ {message}", file=sys.stderr)
@@ -53,12 +91,16 @@ class SlackTUI:
             print("✗ Not authenticated", file=sys.stderr)
             return False
         
-        channel_id = self.handler.resolve_channel(channel)
+        channel_id = self.handler.resolve_channel(channel, types=self.allowed_types)
         if not channel_id:
             print(f"✗ Channel not found: {channel}", file=sys.stderr)
             return False
         
-        result = self.handler.send_message(channel_id, text, thread_ts)
+        try:
+            result = self.handler.send_message(channel_id, text, thread_ts)
+        except SlackPermissionError as pe:
+            self._print_permission_help(pe)
+            return False
         if result:
             print(f"✓ Message sent to {channel}")
             return True
@@ -72,12 +114,16 @@ class SlackTUI:
             print("✗ Not authenticated", file=sys.stderr)
             return
         
-        channel_id = self.handler.resolve_channel(channel)
+        channel_id = self.handler.resolve_channel(channel, types=self.allowed_types)
         if not channel_id:
             print(f"✗ Channel not found: {channel}", file=sys.stderr)
             return
         
-        messages = self.handler.get_messages(channel_id, limit)
+        try:
+            messages = self.handler.get_messages(channel_id, limit)
+        except SlackPermissionError as pe:
+            self._print_permission_help(pe)
+            return
         
         print(f"\n{'='*60}")
         print(f"  Messages from {channel}")
@@ -116,7 +162,11 @@ class SlackTUI:
             print("✗ Not authenticated", file=sys.stderr)
             return
         
-        channels = self.handler.get_channels()
+        try:
+            channels = self.handler.get_channels(types=self.allowed_types)
+        except SlackPermissionError as pe:
+            self._print_permission_help(pe)
+            return
         member_channels = [c for c in channels if c.get("is_member")]
         
         print(f"\n{'='*60}")
@@ -133,7 +183,11 @@ class SlackTUI:
             print("✗ Not authenticated", file=sys.stderr)
             return
         
-        results = self.handler.search_messages(query, count)
+        try:
+            results = self.handler.search_messages(query, count)
+        except SlackPermissionError as pe:
+            self._print_permission_help(pe)
+            return
         
         print(f"\n{'='*60}")
         print(f"  Search results for: {query}")
@@ -194,7 +248,11 @@ class SlackTUI:
             return
         
         print("Generating recaps...")
-        self.recap_manager.generate_recaps()
+        try:
+            self.recap_manager.generate_recaps(types=self.allowed_types)
+        except SlackPermissionError as pe:
+            self._print_permission_help(pe)
+            return
         
         if not self.recap_manager.recaps:
             print("No channel activity to recap.")
@@ -207,43 +265,38 @@ class SlackTUI:
             if recap:
                 print(self.recap_manager.format_recap(recap, detailed=True))
     
-    def _interactive_recap(self):
-        """Interactive recap with Q/E navigation."""
-        import termios
-        import tty
-        
-        recap = self.recap_manager.get_current_recap()
-        print("\033[2J\033[H")  # Clear screen
-        print(self.recap_manager.format_recap(recap, detailed=True))
-        
-        fd = sys.stdin.fileno()
-        old_settings = termios.tcgetattr(fd)
-        
+
+def _interactive_recap(self):
+    """Interactive recap with Q/E navigation (cross-platform)."""
+    recap = self.recap_manager.get_current_recap()
+    print("\033[2J\033[H")  # Clear screen
+    print(self.recap_manager.format_recap(recap, detailed=True))
+    print("\n[Q] Previous | [E] Next | [X] Exit\n")
+
+    while True:
         try:
-            tty.setraw(fd)
-            print("\n[Q] Previous | [E] Next | [X] Exit\n")
-            
-            while True:
-                char = sys.stdin.read(1).lower()
-                
-                if char == 'q':
-                    recap = self.recap_manager.previous_recap()
-                    print("\033[2J\033[H")  # Clear screen
-                    print(self.recap_manager.format_recap(recap, detailed=True))
-                    print("\n[Q] Previous | [E] Next | [X] Exit\n")
-                
-                elif char == 'e':
-                    recap = self.recap_manager.next_recap()
-                    print("\033[2J\033[H")  # Clear screen
-                    print(self.recap_manager.format_recap(recap, detailed=True))
-                    print("\n[Q] Previous | [E] Next | [X] Exit\n")
-                
-                elif char == 'x':
-                    break
-        
-        finally:
-            termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
-            print("\n\nExited recap mode.")
+            char = read_key()
+        except RuntimeError as e:
+            print(f"\n✗ {e}", file=sys.stderr)
+            break
+
+        if not char:
+            continue
+
+        if char == "q":
+            recap = self.recap_manager.previous_recap()
+        elif char == "e":
+            recap = self.recap_manager.next_recap()
+        elif char == "x":
+            break
+        else:
+            continue
+
+        print("\033[2J\033[H")
+        print(self.recap_manager.format_recap(recap, detailed=True))
+        print("\n[Q] Previous | [E] Next | [X] Exit\n")
+
+    print("\nExited recap mode.")
 
 
 def show_auth_help():
@@ -295,11 +348,11 @@ Method 1 - Command line:
   python slack-tui.py --token xoxp-your-token
 
 Method 2 - Environment variable:
-  export SLACK_TUI_TOKEN=xoxp-your-token
+  export SLACK_TOKEN=xoxp-your-token
   python slack-tui.py
 
 Method 3 - .env file:
-  Create .env file with: SLACK_TUI_TOKEN=xoxp-your-token
+  Create .env file with: SLACK_TOKEN=xoxp-your-token
 
 🔒 Security
 ━━━━━━━━━━
@@ -328,7 +381,10 @@ async def main():
     )
     
     # Auth
-    parser.add_argument('-t', '--token', help='Slack token (xoxp-*, xoxb-*, xoxe-*, xapp-*)')
+    parser.add_argument('-t', '--token', help='Slack Web API token (xoxb-* or xoxp-* recommended)')
+    parser.add_argument('--save-token', action='store_true', help='Save the provided token to the local config file')
+    parser.add_argument('--types', default=None, help='Conversation types for channel discovery (comma-separated). Default: public_channel')
+    parser.add_argument('--debug', action='store_true', help='Show debug tracebacks on errors')
     parser.add_argument('--help-auth', action='store_true', help='Show authentication help')
     
     # Quick actions
@@ -358,7 +414,7 @@ async def main():
     app = SlackTUI()
     
     # Authenticate
-    if not await app.authenticate(args.token):
+    if not await app.authenticate(args.token, save_token=args.save_token, types=args.types, debug=args.debug):
         sys.exit(1)
     
     # Handle actions

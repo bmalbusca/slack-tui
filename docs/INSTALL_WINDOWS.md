@@ -46,7 +46,7 @@ mkdir %USERPROFILE%\.config\slack-tui-app
 ### Option 1: Environment Variable (Session)
 
 ```cmd
-set SLACK_TUI_TOKEN=xoxp-your-token-here
+set SLACK_TOKEN=xoxp-your-token-here
 python slack-tui.py --channels
 ```
 
@@ -55,7 +55,7 @@ python slack-tui.py --channels
 1. Press `Win + X` → System
 2. Advanced system settings → Environment Variables
 3. Under "User variables", click New
-4. Variable name: `SLACK_TUI_TOKEN`
+4. Variable name: `SLACK_TOKEN`
 5. Variable value: `xoxp-your-token-here`
 6. Click OK
 
@@ -170,3 +170,9 @@ python slack-tui.py --help-auth
 - File permissions (chmod) don't work the same on Windows - tokens.json won't have Unix-style permissions
 - Interactive recap (Q/E keys) works best in Windows Terminal or PowerShell
 - Use forward slashes or double backslashes in paths: `C:/path/to/file` or `C:\\path\\to\\file`
+
+
+## Recap interactive mode
+
+Interactive recap now supports Windows using a cross-platform key reader.
+If you run from a non-interactive terminal (no TTY), interactive recap will exit with a clear message.
