@@ -1,0 +1,20 @@
+deploy-latest.sh
+*.pyc
+.DS_Store
+*~
+media/*
+venv
+.venv
+celerybeat-*
+env.sh
+.cache
+.idea/
+
+# Optional extras
+__pycache__/
+*.pyo
+*.pyd
+*.log
+.env
+*.sqlite3
+
