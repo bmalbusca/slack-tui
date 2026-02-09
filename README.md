@@ -42,7 +42,7 @@ cd slack-tui-app
 
 You can use any of these token types:
 
-#### Option A: User OAuth Token (xoxp-*) - Recommended
+#### User OAuth Token (xoxp-*) - Recommended
 
 1. Go to **https://api.slack.com/apps**
 2. Click **"Create New App"** → **"From scratch"**
@@ -60,29 +60,6 @@ You can use any of these token types:
 7. Click **"Install to Workspace"**
 8. Copy **"User OAuth Token"** (starts with `xoxp-`)
 
-#### Option B: Bot User OAuth Token (xoxb-*)
-
-1. Follow steps 1-4 above
-2. Go to **"OAuth & Permissions"**
-3. Add **Bot Token Scopes** (same as above)
-4. Click **"Install to Workspace"**
-5. Copy **"Bot User OAuth Token"** (starts with `xoxb-`)
-
-#### Option C: App Bot Tokens (xoxe-*, xoxe.xoxp-*)
-
-For Enterprise Grid or app installations:
-- **xoxe.xoxp-*** - App Bot Access Token (active session)
-- **xoxe-*** - App Bot Refresh Token (to refresh access)
-
-These are typically used in Enterprise Grid environments or when using the newer app token flow.
-
-#### Option D: App-Level Token (xapp-*)
-
-For Socket Mode and app-level features:
-1. Go to your app settings
-2. Navigate to "App-Level Tokens"
-3. Generate token with appropriate scopes
-4. Copy the token (starts with `xapp-`)
 
 ### 3. Configure Token
 
@@ -92,6 +69,46 @@ export SLACK_TOKEN=xoxp-your-token
 
 # Option 2: Pass on command line
 python slack-tui.py --token xoxp-your-token --channels
+```
+
+#### Token Resolution Order
+
+The app resolves tokens in the following order:
+```bash
+CLI argument -t / --token
+```
+- Environment variable ```SLACK_TOKEN```
+
+- Saved config (only if you explicitly saved it)
+
+- This guarantees consistent behavior across commands.
+
+#### Saving Tokens (Optional)
+
+Tokens are never saved unless you explicitly ask for it.
+```bash
+python slack-tui.py -t xoxb-... --save-token
+```
+
+Config files are stored using OS-appropriate locations:
+
+```bash
+
+Windows: %APPDATA%/slack-tui/
+
+Linux: ~/.config/slack-tui/
+
+macOS: ~/Library/Application Support/slack-tui/
+```
+
+#### Refresh Token Support (Enterprise OAuth)
+
+If you use short-lived Enterprise OAuth tokens:
+```bash
+python slack-tui.py \
+  -t xoxe.xoxp-ACCESS \
+  -r xoxe-REFRESH \
+  --save-token
 ```
 
 ## Usage
